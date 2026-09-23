@@ -266,6 +266,7 @@ const source = {
   "ui.question.multiHint": "Select all answers that apply",
   "ui.question.singleHint": "Select one answer",
   "ui.question.custom.placeholder": "Type your answer…",
+  "ui.file.openInPanel": "Open file in side panel",
 } satisfies Record<string, string>
 
 export type Key = keyof typeof source

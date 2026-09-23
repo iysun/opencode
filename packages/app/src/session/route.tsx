@@ -6,6 +6,7 @@ import { TextShimmer } from "@opencode/ui/text-shimmer"
 import { CommentsProvider } from "@/composer/comments"
 import { readPromptPresentation } from "@/composer/comment-note"
 import { FileProvider } from "@/workspaces/files/model"
+import { FileOpener } from "@/shell/routes/file-opener"
 import { LocationProvider } from "@/workspaces/location"
 import { ModelsProvider } from "@/providers/models/models"
 import { useProviders } from "@/providers/catalog/providers"
@@ -169,11 +170,13 @@ function TargetSessionPage() {
     // so keep their owners alive while navigating between workspaces on this server.
     <TerminalProvider>
       <FileProvider>
-        <ComposerPersistenceProvider>
-          <CommentsProvider>
-            <SessionPage />
-          </CommentsProvider>
-        </ComposerPersistenceProvider>
+        <FileOpener>
+          <ComposerPersistenceProvider>
+            <CommentsProvider>
+              <SessionPage />
+            </CommentsProvider>
+          </ComposerPersistenceProvider>
+        </FileOpener>
       </FileProvider>
     </TerminalProvider>
   )

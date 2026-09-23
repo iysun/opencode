@@ -36,6 +36,7 @@ import { Tooltip } from "@opencode/ui/tooltip"
 import { IconButton } from "@opencode/ui/icon-button"
 import { TextShimmer } from "@opencode/ui/text-shimmer"
 import { changedFileDiff, patchFileGroups } from "../components/apply-patch-file"
+import { FileOpenButton } from "./file-open-button"
 import { animate } from "motion"
 import { SessionProgressIndicatorV2 } from "../v2/components/session-progress-indicator-v2"
 import type {
@@ -1939,9 +1940,12 @@ ToolRegistry.register({
               forceOpen={props.forceOpen}
               defer={props.deferContent !== false}
               actions={
-                <Show when={!pending() ? diff() : undefined}>
-                  {(diff) => <DiffChanges appearance="standard" changes={diff()} />}
-                </Show>
+                <>
+                  <Show when={!pending() ? diff() : undefined}>
+                    {(diff) => <DiffChanges appearance="standard" changes={diff()} />}
+                  </Show>
+                  <FileOpenButton path={path()} enabled={!pending()} />
+                </>
               }
             >
               <div data-component="edit-content">
@@ -2087,6 +2091,9 @@ ToolRegistry.register({
                               />
                             </Match>
                           </Switch>
+                          <Show when={file().type !== "delete"}>
+                            <FileOpenButton path={value()} />
+                          </Show>
                           <Icon name="chevron-grabber-vertical" size="small" />
                         </div>
                       </div>

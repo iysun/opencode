@@ -101,6 +101,16 @@ export function encodeFilePath(filepath: string): string {
     .join("/")
 }
 
+/** A drive-letter or UNC path — absolute on Windows. */
+function isWindowsAbsolute(input: string) {
+  return /^[A-Za-z]:/.test(input) || input.startsWith("\\\\")
+}
+
+/** Absolute on the current platform, so `resolve` would ignore a location and the read would be refused. */
+export function isAbsolutePath(input: string) {
+  return isWindowsAbsolute(input) || input.startsWith("/")
+}
+
 export function createPathHelpers(scope: () => string) {
   const normalize = (input: string) => {
     const root = scope()
@@ -109,7 +119,8 @@ export function createPathHelpers(scope: () => string) {
 
     // Separator-agnostic prefix stripping for Cygwin/native Windows compatibility
     // Only case-insensitive on Windows (drive letter or UNC paths)
-    const windows = /^[A-Za-z]:/.test(root) || root.startsWith("\\\\")
+    let external = false
+    const windows = isWindowsAbsolute(root)
     const canonRoot = windows ? root.replace(/\\/g, "/").toLowerCase() : root.replace(/\\/g, "/")
     const canonPath = windows ? path.replace(/\\/g, "/").toLowerCase() : path.replace(/\\/g, "/")
     if (
@@ -118,14 +129,27 @@ export function createPathHelpers(scope: () => string) {
     ) {
       // Slice from original path to preserve native separators
       path = path.slice(root.length)
+    } else if (isAbsolutePath(path)) {
+      // Outside the workspace. tab() drops the distinction between `D:\x` and `D:/x`, so
+      // normalize to forward slashes here or normalize() and pathFromTab(tab(x)) would
+      // disagree and key the file store twice. Drop a leading `/` that only precedes a
+      // drive letter (a `file://` URL form); any other root is meaningful and stays.
+      external = true
+      path = path.replace(/\\/g, "/")
+      if (/^\/[A-Za-z]:(\/|$)/.test(path)) path = path.slice(1)
     }
 
     if (path.startsWith("./") || path.startsWith(".\\")) {
       path = path.slice(2)
     }
 
-    if (path.startsWith("/") || path.startsWith("\\")) {
-      path = path.slice(1)
+    // Stripping the workspace prefix leaves a stray separator (`/repo/a` -> `/a`); a
+    // workspace-external path keeps its root, since dropping it would resolve to a
+    // path inside the workspace instead. UNC is absolute and was handled above.
+    if (!external) {
+      if (path.startsWith("/") || path.startsWith("\\")) {
+        path = path.slice(1)
+      }
     }
     return path
   }

@@ -5,11 +5,11 @@ import { createSimpleContext } from "@opencode/ui/context"
 import { showToast } from "@/shell/notifications/toast"
 import { useParams } from "@solidjs/router"
 import { base64Encode } from "@opencode/util/encode"
-import { getFilename } from "@opencode/util/path"
+import { getDirectory, getFilename } from "@opencode/util/path"
 import { useWorkspaceLocation } from "@/workspaces/location"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useLayout } from "@/shell/state/layout"
-import { createPathHelpers } from "./path"
+import { createPathHelpers, isAbsolutePath } from "./path"
 import {
   approxBytes,
   evictContentLru,
@@ -185,8 +185,16 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
 
       setLoading(file)
 
+      // `file.read` only accepts paths inside the location, so a file outside the workspace is
+      // read by scoping the location to its own directory and passing the bare filename —
+      // the same trick `readLocalImage` uses. Internal paths keep the workspace location.
+      const external = isAbsolutePath(file)
+      const request = external
+        ? { path: getFilename(file), location: { directory: getDirectory(file) } }
+        : { path: file, location: { directory } }
+
       const promise = serverSDK.api.file
-        .read({ path: file, location: { directory } })
+        .read(request)
         .then((data) => {
           if (scope() !== directory) return
           const content = { type: "text" as const, content: new TextDecoder().decode(data) }
