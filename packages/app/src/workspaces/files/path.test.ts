@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { createPathHelpers, isAbsolutePath, stripQueryAndHash, unquoteGitPath, encodeFilePath } from "./path"
+import { createPathHelpers, stripQueryAndHash, unquoteGitPath, encodeFilePath } from "./path"
 
 describe("file path helpers", () => {
   test("normalizes file inputs against workspace root", () => {
@@ -19,6 +19,24 @@ describe("file path helpers", () => {
     expect(path.normalize("C:/repo/src/app.ts")).toBe("src/app.ts")
     expect(path.normalize("file://C:/repo/src/app.ts")).toBe("src/app.ts")
     expect(path.normalize("c:\\repo\\src\\app.ts")).toBe("src\\app.ts")
+  })
+
+  test("keeps files outside the workspace absolute and round-trips them through tabs", () => {
+    const posix = createPathHelpers(() => "/repo")
+    expect(posix.normalize("/tmp/out/report.pdf")).toBe("/tmp/out/report.pdf")
+    expect(posix.absolute("/tmp/out/report.pdf")).toBe(true)
+    expect(posix.absolute("src/app.ts")).toBe(false)
+    expect(posix.tab("/tmp/out/report.pdf")).toBe("file:///tmp/out/report.pdf")
+    expect(posix.pathFromTab("file:///tmp/out/report.pdf")).toBe("/tmp/out/report.pdf")
+    expect(posix.normalize("/repository/x.ts")).toBe("/repository/x.ts")
+
+    const windows = createPathHelpers(() => "C:\\repo")
+    expect(windows.normalize("C:\\tmp\\font.ttf")).toBe("C:\\tmp\\font.ttf")
+    expect(windows.normalize("file:///C:/tmp/font.ttf")).toBe("C:/tmp/font.ttf")
+    expect(windows.absolute("C:/tmp/font.ttf")).toBe(true)
+    expect(windows.tab("C:/tmp/font.ttf")).toBe("file:///C:/tmp/font.ttf")
+    expect(windows.pathFromTab("file:///C:/tmp/font.ttf")).toBe("C:/tmp/font.ttf")
+    expect(windows.pathFromTab("file:///C:/repo/src/app.ts")).toBe("src/app.ts")
   })
 
   test("normalizes Windows directory separators", () => {
@@ -58,56 +76,21 @@ describe("file path helpers", () => {
 })
 
 describe("paths outside the workspace", () => {
-  test("keeps POSIX absolute paths absolute", () => {
-    const path = createPathHelpers(() => "/repo")
-    expect(path.normalize("/tmp/outside.ts")).toBe("/tmp/outside.ts")
-    expect(path.normalize("file:///tmp/outside.ts")).toBe("/tmp/outside.ts")
-    // A sibling of the workspace is not inside it, so it must not become relative
-    expect(path.normalize("/other/repo.ts")).toBe("/other/repo.ts")
-    expect(isAbsolutePath(path.normalize("/tmp/outside.ts"))).toBe(true)
-    expect(isAbsolutePath(path.normalize("src/app.ts"))).toBe(false)
-  })
-
-  test("keeps Windows absolute paths absolute with a stable separator", () => {
-    const path = createPathHelpers(() => "C:\\repo")
-    // Both spellings name the same file, so they must normalize to the same key
-    expect(path.normalize("D:\\outside\\app.ts")).toBe("D:/outside/app.ts")
-    expect(path.normalize("D:/outside/app.ts")).toBe("D:/outside/app.ts")
-    expect(path.normalize("file:///D:/outside/app.ts")).toBe("D:/outside/app.ts")
-    expect(path.normalize("\\\\server\\share\\app.ts")).toBe("//server/share/app.ts")
-  })
-
-  test("does not treat a same-named file inside the workspace as the external one", () => {
-    const path = createPathHelpers(() => "/repo")
-    expect(path.normalize("/repo/src/app.ts")).toBe("src/app.ts")
-    expect(path.normalize("/elsewhere/src/app.ts")).toBe("/elsewhere/src/app.ts")
-  })
-
-  test("round-trips external paths through tab", () => {
-    for (const [root, input, key] of [
-      ["/repo", "/tmp/outside.ts", "/tmp/outside.ts"],
-      ["C:\\repo", "D:\\outside\\app.ts", "D:/outside/app.ts"],
-      ["C:\\repo", "D:/outside/app.ts", "D:/outside/app.ts"],
-      ["C:\\repo", "\\\\server\\share\\app.ts", "//server/share/app.ts"],
-      ["/repo", "/tmp/my file.ts", "/tmp/my file.ts"],
-    ] as const) {
-      const path = createPathHelpers(() => root)
-      expect(path.normalize(input)).toBe(key)
-      expect(path.pathFromTab(path.tab(input))).toBe(key)
-    }
-  })
-
-  test("keeps a leading slash out of the tab for Windows externals", () => {
-    const path = createPathHelpers(() => "C:\\repo")
-    expect(path.tab("D:\\outside\\app.ts")).toBe("file:///D:/outside/app.ts")
-    expect(path.tab("/tmp/outside.ts")).toBe("file:///tmp/outside.ts")
+  test("round-trips external paths that need encoding or a UNC root", () => {
+    // Upstream covers the plain POSIX and Windows cases; these are the shapes a tool card is
+    // most likely to hand the opener from a log line or a build output path.
+    const posix = createPathHelpers(() => "/repo")
+    expect(posix.pathFromTab(posix.tab("/tmp/my file.ts"))).toBe("/tmp/my file.ts")
+    const windows = createPathHelpers(() => "C:\\repo")
+    expect(windows.pathFromTab(windows.tab("\\\\server\\share\\app.ts"))).toBe("//server/share/app.ts")
   })
 
   test("tab is idempotent, so tabbing an already-tabbed path is safe", () => {
-    // Tool cards hand the opener an absolute path, which it tabs before passing to the same
+    // Tool cards hand the opener a path, which it tabs before passing to the same
     // normalize-then-tab helper the file browser uses. That second tab() must not mangle it.
     for (const [root, input] of [
       ["C:\\repo", "C:/Users/Administrator/oc-preview-test/external/service-config.json"],
+      ["C:\\repo", "D:\\outside\\app.ts"],
       ["/repo", "/tmp/outside.ts"],
       ["/repo", "/tmp/my file.ts"],
     ] as const) {

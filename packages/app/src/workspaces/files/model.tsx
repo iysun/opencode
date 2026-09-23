@@ -9,7 +9,8 @@ import { getDirectory, getFilename } from "@opencode/util/path"
 import { useWorkspaceLocation } from "@/workspaces/location"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useLayout } from "@/shell/state/layout"
-import { createPathHelpers, isAbsolutePath } from "./path"
+import { createPathHelpers } from "./path"
+import { fileContentFromBytes } from "./artifact"
 import {
   approxBytes,
   evictContentLru,
@@ -185,22 +186,17 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
 
       setLoading(file)
 
-      // `file.read` only accepts paths inside the location, so a file outside the workspace is
-      // read by scoping the location to its own directory and passing the bare filename —
-      // the same trick `readLocalImage` uses. Internal paths keep the workspace location.
-      const external = isAbsolutePath(file)
-      const request = external
+      // Files outside the workspace are read from their own directory, like markdown images.
+      // The trailing separator from getDirectory keeps "/" and "C:/" valid, like readLocalImage.
+      const request = path.absolute(file)
         ? { path: getFilename(file), location: { directory: getDirectory(file) } }
         : { path: file, location: { directory } }
-
       const promise = serverSDK.api.file
         .read(request)
         .then((data) => {
           if (scope() !== directory) return
-          const content = { type: "text" as const, content: new TextDecoder().decode(data) }
+          const content = fileContentFromBytes(file, data)
           setLoaded(file, content)
-
-          if (!content) return
           touchFileContent(file, approxBytes(content))
           evictContent(new Set([file]))
         })
@@ -289,6 +285,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     return {
       ready: () => view().ready(),
       normalize: path.normalize,
+      absolute: path.absolute,
       tab: path.tab,
       pathFromTab: path.pathFromTab,
       tree: {
